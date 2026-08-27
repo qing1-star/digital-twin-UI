@@ -3,13 +3,12 @@
 namespace robot_qt_viewer
 {
     bool registerDigitalTwinWorkbenchContribution(
-        RobotQtViewerWorkbenchPackageRegistry& catalog,
-        RobotQtViewerWorkbenchPackageSource source)
+        RobotQtViewerWorkbenchPackageRegistry& catalog)
     {
         const QString packageId = QStringLiteral("smrobot.workbench.digital-twin");
         if(!catalog.registerPackage(makeRobotQtViewerWorkbenchPackage(
-               packageId, QStringLiteral("Digital Twin"), source)) ||
-            !catalog.registerMode(makeRobotQtViewerWorkbenchMode(
+               packageId, QStringLiteral("Digital Twin"))) ||
+            !catalog.registerWorkbench(makeRobotQtViewerWorkbench(
                packageId,
                RobotQtViewerWorkbenchKind::DigitalTwin,
                QStringLiteral("digitalTwinWorkbench"),
