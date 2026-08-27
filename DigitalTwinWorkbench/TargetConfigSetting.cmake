@@ -4,4 +4,6 @@ set(${TARGET_NAME}_RequiredLibsPublic
     SMRobotWorkbenchCommon::WorkbenchCommon
 )
 
-set(${TARGET_NAME}_RequiredLibsPrivate)
+set(${TARGET_NAME}_RequiredLibsPrivate
+    SMRobotSpray::DigitalTwinCommunicate
+)

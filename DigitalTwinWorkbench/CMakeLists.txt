@@ -3,8 +3,12 @@ cmake_minimum_required(VERSION 3.20)
 set(TARGET_NAME DigitalTwinWorkbench)
 
 set(SOURCES
+    DigitalTwinModuleController.cpp
+    DigitalTwinModuleController.h
     DigitalTwinWorkbenchContribution.cpp
     DigitalTwinWorkbenchContribution.h
+    DigitalTwinWorkbenchWidget.cpp
+    DigitalTwinWorkbenchWidget.h
 )
 
 add_library(${TARGET_NAME} STATIC ${SOURCES})
@@ -19,6 +23,8 @@ target_include_directories(${TARGET_NAME}
 target_link_libraries(${TARGET_NAME}
     PUBLIC
         SMRobotWorkbenchCommon::WorkbenchCommon
+    PRIVATE
+        SMRobotSpray::DigitalTwinCommunicate
 )
 
 target_compile_features(${TARGET_NAME}
@@ -33,6 +39,7 @@ set(${TARGET_NAME}_INSTALL_PUBLIC_DEPENDENCIES
 set_target_properties(${TARGET_NAME}
     PROPERTIES
         FOLDER SMRobotWorkbenchDigitalTwin
+        AUTOMOC ON
         DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX}
         RELEASE_POSTFIX ${CMAKE_RELEASE_POSTFIX}
         SMROBOT_WORKBENCH_REGISTRAR_HEADER "DigitalTwinWorkbenchContribution.h"
