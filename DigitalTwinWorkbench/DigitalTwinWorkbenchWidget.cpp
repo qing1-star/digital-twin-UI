@@ -1,9 +1,10 @@
 #include "DigitalTwinWorkbenchWidget.h"
 
 #include <Communicate/RobotController.h>
-#include "../../../SMRobotApps/RobotQtViewer/RobotQtViewerLanguage.h"
+#include "RobotQtViewerLocalization.h"
 
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QComboBox>
 #include <QDialog>
 #include <QFileDialog>
@@ -29,17 +30,22 @@
 DigitalTwinWorkbenchWidget::DigitalTwinWorkbenchWidget(QWidget* parent)
     : QWidget(parent)
     , m_controller(std::make_shared<RobotController>())
-    , m_language(robot_qt_viewer::LanguageManager::savedLanguage())
 {
+    if(QApplication* application = qobject_cast<QApplication*>(QApplication::instance())) {
+        m_localization =
+            robot_qt_viewer::RobotQtViewerLocalizationService::installedOnApplication(
+                *application);
+    }
     setupUi();
     setupConnections();
     retranslateUi();
     updateConnectionStatus(false);
 }
 
-void DigitalTwinWorkbenchWidget::setLanguage(robot_qt_viewer::LanguageKind language)
+void DigitalTwinWorkbenchWidget::setLocalizationService(
+    const robot_qt_viewer::RobotQtViewerLocalizationService* localization)
 {
-    m_language = language;
+    m_localization = localization;
     retranslateUi();
 }
 
@@ -69,7 +75,7 @@ void DigitalTwinWorkbenchWidget::deactivate()
 
 QString DigitalTwinWorkbenchWidget::uiText(const QString& key) const
 {
-    return robot_qt_viewer::LanguageManager::text(m_language, key);
+    return m_localization != nullptr ? m_localization->text(key, key) : key;
 }
 
 void DigitalTwinWorkbenchWidget::setupUi()

@@ -1,10 +1,17 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(TARGET_NAME DigitalTwinWorkbench)
+set(CMAKE_AUTOMOC ON)
 
 set(SOURCES
+    DigitalTwinModuleController.cpp
+    DigitalTwinModuleController.h
+    DigitalTwinWorkbenchLifecycle.cpp
+    DigitalTwinWorkbenchLifecycle.h
     DigitalTwinWorkbenchContribution.cpp
     DigitalTwinWorkbenchContribution.h
+    DigitalTwinWorkbenchWidget.cpp
+    DigitalTwinWorkbenchWidget.h
 )
 
 add_library(${TARGET_NAME} STATIC ${SOURCES})
@@ -18,7 +25,10 @@ target_include_directories(${TARGET_NAME}
 
 target_link_libraries(${TARGET_NAME}
     PUBLIC
+        Qt5::Widgets
         SMRobotWorkbenchCommon::WorkbenchCommon
+        SMRobotWorkbenchCommon::RobotQtModulesShared
+        SMRobotSpray::DigitalTwinCommunicate
 )
 
 target_compile_features(${TARGET_NAME}
@@ -27,7 +37,10 @@ target_compile_features(${TARGET_NAME}
 )
 
 set(${TARGET_NAME}_INSTALL_PUBLIC_DEPENDENCIES
+    Qt5::Widgets
     SMRobotWorkbenchCommon::WorkbenchCommon
+    SMRobotWorkbenchCommon::RobotQtModulesShared
+    SMRobotSpray::DigitalTwinCommunicate
 )
 
 set_target_properties(${TARGET_NAME}

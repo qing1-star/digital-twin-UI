@@ -3,13 +3,14 @@
 #include "DigitalTwinWorkbenchWidget.h"
 #include "RobotQtViewerDocumentContext.h"
 #include "RobotQtViewerDocumentController.h"
+#include "RobotQtViewerLocalization.h"
 #include "RobotQtViewerSelectionModel.h"
 #include "RobotQtViewerViewportServices.h"
-#include "../../../SMRobotApps/RobotQtViewer/RobotQtViewerLanguage.h"
 
 #include <SimulationProject/ProjectDocument.h>
 
 #include <QMetaObject>
+#include <QApplication>
 
 #include <algorithm>
 
@@ -27,9 +28,12 @@ namespace
 
     QString dtText(const QString& key)
     {
-        return robot_qt_viewer::LanguageManager::text(
-            robot_qt_viewer::LanguageManager::savedLanguage(),
-            key);
+        QApplication* application = qobject_cast<QApplication*>(QApplication::instance());
+        const auto* localization = application != nullptr
+            ? robot_qt_viewer::RobotQtViewerLocalizationService::installedOnApplication(
+                *application)
+            : nullptr;
+        return localization != nullptr ? localization->text(key, key) : key;
     }
 
     bool isRevoluteJointType(const QString& jointType)

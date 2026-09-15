@@ -15,7 +15,7 @@ class QFrame;
 class QGroupBox;
 class QTimer;
 class RobotController;
-namespace robot_qt_viewer { enum class LanguageKind; }
+namespace robot_qt_viewer { class RobotQtViewerLocalizationService; }
 
 class DigitalTwinWorkbenchWidget : public QWidget
 {
@@ -23,7 +23,8 @@ class DigitalTwinWorkbenchWidget : public QWidget
 
 public:
     explicit DigitalTwinWorkbenchWidget(QWidget* parent = nullptr);
-    void setLanguage(robot_qt_viewer::LanguageKind language);
+    void setLocalizationService(
+        const robot_qt_viewer::RobotQtViewerLocalizationService* localization);
     void setJointsUpdatedHandler(std::function<void(const std::vector<float>&, bool)> handler);
     bool digitalTwinActive() const;
     void deactivate();
@@ -63,7 +64,7 @@ private:
 
     std::function<void(const std::vector<float>&, bool)> m_jointsUpdatedHandler;
     std::shared_ptr<RobotController> m_controller;
-    robot_qt_viewer::LanguageKind m_language;
+    const robot_qt_viewer::RobotQtViewerLocalizationService* m_localization = nullptr;
     QLineEdit* m_ipInput = nullptr;
     QLineEdit* m_portInput = nullptr;
     QLineEdit* m_ftpPathInput = nullptr;
