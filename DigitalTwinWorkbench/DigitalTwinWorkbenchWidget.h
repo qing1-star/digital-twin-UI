@@ -37,8 +37,11 @@ public:
 
 signals:
     void mappingAddRequested(const QString& sceneRobotId, const QString& sceneRobotLabel, const QString& realRobotName);
+    void mappingConfigLoadRequested(const QString& filePath);
     void mappingRemoveLastRequested();
     void mappingConfirmRequested();
+    void digitalTwinStateChanged(bool active);
+    void robotConnectionStatusChanged(bool connected);
 
 private slots:
     void onConnectClicked();
@@ -49,6 +52,7 @@ private slots:
     void onDigitalTwinClicked();
     void onSendFileClicked();
     void onToggleStatusAreaClicked();
+    void onLoadMappingConfigClicked();
     void onAddMappingClicked();
     void onRemoveMappingClicked();
     void onConfirmMappingClicked();
@@ -91,6 +95,7 @@ private:
     QPushButton* m_digitalTwinButton = nullptr;
     QPushButton* m_sendFileButton = nullptr;
     QPushButton* m_toggleStatusAreaButton = nullptr;
+    QPushButton* m_loadMappingConfigButton = nullptr;
     QPushButton* m_addMappingButton = nullptr;
     QPushButton* m_removeMappingButton = nullptr;
     QPushButton* m_confirmMappingButton = nullptr;

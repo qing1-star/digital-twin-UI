@@ -9,8 +9,12 @@
 
 #include <SimulationProject/ProjectDocument.h>
 
-#include <QMetaObject>
 #include <QApplication>
+#include <QFile>
+#include <QFileInfo>
+#include <QMetaObject>
+#include <QSet>
+#include <QTextStream>
 
 #include <algorithm>
 
@@ -74,10 +78,16 @@ namespace robot_qt_viewer
     {
         connect(&m_widget, &DigitalTwinWorkbenchWidget::mappingAddRequested,
             this, &DigitalTwinModuleController::handleAddMapping);
+        connect(&m_widget, &DigitalTwinWorkbenchWidget::mappingConfigLoadRequested,
+            this, &DigitalTwinModuleController::handleLoadMappingConfig);
         connect(&m_widget, &DigitalTwinWorkbenchWidget::mappingRemoveLastRequested,
             this, &DigitalTwinModuleController::handleRemoveLastMapping);
         connect(&m_widget, &DigitalTwinWorkbenchWidget::mappingConfirmRequested,
             this, &DigitalTwinModuleController::handleConfirmMappings);
+        connect(&m_widget, &DigitalTwinWorkbenchWidget::digitalTwinStateChanged,
+            this, &DigitalTwinModuleController::handleDigitalTwinStateChanged);
+        connect(&m_widget, &DigitalTwinWorkbenchWidget::robotConnectionStatusChanged,
+            this, &DigitalTwinModuleController::handleRobotConnectionStatusChanged);
         m_widget.setJointsUpdatedHandler([this](const std::vector<float>& angles, bool continuous) {
             QMetaObject::invokeMethod(
                 this,
@@ -134,6 +144,17 @@ namespace robot_qt_viewer
         const QString& sceneRobotLabel,
         const QString& realRobotName)
     {
+        if(!m_loadedMappings.isEmpty()) {
+            const int mappingCount = m_loadedMappings.size();
+            const QString fileName = QFileInfo(m_loadedMappingFilePath).fileName();
+            m_pendingMappings = m_loadedMappings;
+            m_loadedMappings.clear();
+            m_loadedMappingFilePath.clear();
+            publishMappingSummary(
+                dtText("digitalTwin.mapping.configAdded").arg(mappingCount).arg(fileName));
+            return;
+        }
+
         if(sceneRobotId.isEmpty() || realRobotName.isEmpty()) {
             publishMappingSummary(dtText("digitalTwin.mapping.invalidSelection"));
             return;
@@ -154,6 +175,104 @@ namespace robot_qt_viewer
             dtText("digitalTwin.mapping.added").arg(entry.sceneRobotLabel, entry.realRobotName));
     }
 
+    void DigitalTwinModuleController::handleLoadMappingConfig(const QString& filePath)
+    {
+        m_loadedMappings.clear();
+        m_loadedMappingFilePath.clear();
+
+        QFile file(filePath);
+        if(!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            publishMappingSummary(
+                dtText("digitalTwin.mapping.configOpenFailed")
+                    .arg(QFileInfo(filePath).fileName(), file.errorString()));
+            return;
+        }
+
+        QStringList virtualRobotNames;
+        QStringList realRobotNames;
+        bool readingRealRobots = false;
+        bool separatorFound = false;
+        QTextStream input(&file);
+        while(!input.atEnd()) {
+            const QString line = input.readLine().trimmed();
+            if(line.isEmpty()) {
+                if(!virtualRobotNames.isEmpty()) {
+                    readingRealRobots = true;
+                    separatorFound = true;
+                }
+                continue;
+            }
+            (readingRealRobots ? realRobotNames : virtualRobotNames).push_back(line);
+        }
+
+        if(!separatorFound || virtualRobotNames.isEmpty() || realRobotNames.isEmpty()) {
+            publishMappingSummary(dtText("digitalTwin.mapping.configInvalidFormat"));
+            return;
+        }
+        if(virtualRobotNames.size() != realRobotNames.size()) {
+            publishMappingSummary(
+                dtText("digitalTwin.mapping.configCountMismatch")
+                    .arg(virtualRobotNames.size())
+                    .arg(realRobotNames.size()));
+            return;
+        }
+
+        QVector<MappingEntry> loadedMappings;
+        loadedMappings.reserve(virtualRobotNames.size());
+        QSet<QString> mappedVirtualRobots;
+        QSet<QString> mappedRealRobots;
+        for(int index = 0; index < virtualRobotNames.size(); ++index) {
+            const QString configuredVirtualName = virtualRobotNames.at(index);
+            QString sceneRobotId;
+            for(const QString& robotId : m_virtualRobotOrder) {
+                if(robotId.compare(configuredVirtualName, Qt::CaseInsensitive) == 0 ||
+                   m_virtualRobotNames.value(robotId).compare(
+                       configuredVirtualName, Qt::CaseInsensitive) == 0) {
+                    sceneRobotId = robotId;
+                    break;
+                }
+            }
+            if(sceneRobotId.isEmpty()) {
+                publishMappingSummary(
+                    dtText("digitalTwin.mapping.configVirtualNotFound")
+                        .arg(configuredVirtualName));
+                return;
+            }
+
+            const QString virtualKey = sceneRobotId.toCaseFolded();
+            const QString configuredRealName = realRobotNames.at(index);
+            const QString realKey = configuredRealName.toCaseFolded();
+            if(mappedVirtualRobots.contains(virtualKey) || mappedRealRobots.contains(realKey)) {
+                publishMappingSummary(
+                    dtText("digitalTwin.mapping.configDuplicatePair")
+                        .arg(configuredVirtualName, configuredRealName));
+                return;
+            }
+
+            MappingEntry entry;
+            entry.sceneRobotId = sceneRobotId;
+            entry.sceneRobotLabel = QStringLiteral("%1 (%2)")
+                                        .arg(m_virtualRobotNames.value(sceneRobotId), sceneRobotId);
+            entry.realRobotName = configuredRealName;
+            entry.jointNames = jointNamesForRobot(sceneRobotId);
+            if(entry.jointNames.isEmpty()) {
+                publishMappingSummary(dtText("digitalTwin.mapping.noVirtualRobotJoints"));
+                return;
+            }
+
+            mappedVirtualRobots.insert(virtualKey);
+            mappedRealRobots.insert(realKey);
+            loadedMappings.push_back(entry);
+        }
+
+        m_loadedMappings = loadedMappings;
+        m_loadedMappingFilePath = filePath;
+        publishMappingSummary(
+            dtText("digitalTwin.mapping.configLoaded")
+                .arg(QFileInfo(filePath).fileName())
+                .arg(loadedMappings.size()));
+    }
+
     void DigitalTwinModuleController::handleRemoveLastMapping()
     {
         if(m_pendingMappings.isEmpty()) {
@@ -169,6 +288,7 @@ namespace robot_qt_viewer
 
     void DigitalTwinModuleController::handleConfirmMappings()
     {
+        refreshRealRobots();
         QString error;
         if(!validateMappings(m_pendingMappings, error)) {
             publishMappingSummary(error);
@@ -176,7 +296,22 @@ namespace robot_qt_viewer
         }
 
         m_confirmedMappings = m_pendingMappings;
-        publishMappingSummary(dtText("digitalTwin.mapping.confirmed"));
+        publishMappingSummary(
+            dtText("digitalTwin.mapping.confirmedCount").arg(m_confirmedMappings.size()));
+    }
+
+    void DigitalTwinModuleController::handleDigitalTwinStateChanged(bool active)
+    {
+        m_twinSyncReported = false;
+        if(active) {
+            publishMappingSummary(
+                dtText("digitalTwin.mapping.twinStarted").arg(activeMappings().size()));
+        }
+    }
+
+    void DigitalTwinModuleController::handleRobotConnectionStatusChanged(bool)
+    {
+        refreshRealRobots();
     }
 
     void DigitalTwinModuleController::setSelectedRobot(const QString& robotId)
@@ -202,15 +337,19 @@ namespace robot_qt_viewer
     void DigitalTwinModuleController::refreshRealRobots()
     {
         m_realRobotAxisCounts.clear();
+        m_realRobotAxisOffsets.clear();
         QStringList labels;
         const QStringList realRobotNames = m_widget.realRobotNames();
+        int axisOffset = 0;
         for(const QString& realRobotName : realRobotNames) {
             const int axisCount = m_widget.realRobotAxisCount(realRobotName);
             if(axisCount <= 0) {
                 continue;
             }
             m_realRobotAxisCounts.insert(realRobotName, axisCount);
+            m_realRobotAxisOffsets.insert(realRobotName, axisOffset);
             labels.push_back(realRobotName);
+            axisOffset += axisCount;
         }
         m_widget.setRealRobotOptions(labels);
     }
@@ -224,9 +363,42 @@ namespace robot_qt_viewer
         return m_virtualRobotJoints.value(robotId);
     }
 
+    int DigitalTwinModuleController::realRobotAxisCount(const QString& realRobotName) const
+    {
+        for(auto it = m_realRobotAxisCounts.constBegin();
+            it != m_realRobotAxisCounts.constEnd(); ++it) {
+            if(it.key().compare(realRobotName, Qt::CaseInsensitive) == 0) {
+                return it.value();
+            }
+        }
+        return 0;
+    }
+
+    int DigitalTwinModuleController::realRobotAxisOffset(const QString& realRobotName) const
+    {
+        for(auto it = m_realRobotAxisOffsets.constBegin();
+            it != m_realRobotAxisOffsets.constEnd(); ++it) {
+            if(it.key().compare(realRobotName, Qt::CaseInsensitive) == 0) {
+                return it.value();
+            }
+        }
+        return -1;
+    }
+
     void DigitalTwinModuleController::publishMappingSummary(const QString& tailMessage)
     {
         QStringList lines;
+        if(!m_loadedMappings.isEmpty()) {
+            lines.push_back(
+                dtText("digitalTwin.mapping.loadedConfigHeader")
+                    .arg(QFileInfo(m_loadedMappingFilePath).fileName()));
+            for(const MappingEntry& entry : m_loadedMappings) {
+                lines.push_back(
+                    QStringLiteral("  %1 <- %2")
+                        .arg(entry.sceneRobotLabel, entry.realRobotName));
+            }
+            lines.push_back(QStringLiteral("------------------------"));
+        }
         if(m_confirmedMappings.isEmpty() && m_pendingMappings.isEmpty()) {
             lines.push_back(dtText("digitalTwin.mapping.noneConfigured"));
             QVector<MappingEntry> defaults = activeMappings();
@@ -307,7 +479,7 @@ namespace robot_qt_viewer
         }
 
         for(const MappingEntry& entry : mappings) {
-            const int expected = m_realRobotAxisCounts.value(entry.realRobotName, 0);
+            const int expected = realRobotAxisCount(entry.realRobotName);
             if(expected <= 0) {
                 error = dtText("digitalTwin.mapping.unsupportedRealRobot").arg(entry.realRobotName);
                 return false;
@@ -338,12 +510,20 @@ namespace robot_qt_viewer
         const QVector<MappingEntry> mappings = activeMappings();
         QString primaryRobotId;
         bool updated = false;
-        int sourceOffset = 0;
+        int updatedMappingCount = 0;
+        int defaultSourceOffset = 0;
         for(const MappingEntry& entry : mappings) {
             const int sourceCount = entry.realRobotName.isEmpty()
                 ? entry.jointNames.size()
-                : m_realRobotAxisCounts.value(entry.realRobotName, 0);
-            if(sourceCount <= 0 || static_cast<int>(angles.size()) <= sourceOffset) {
+                : realRobotAxisCount(entry.realRobotName);
+            const int sourceOffset = entry.realRobotName.isEmpty()
+                ? defaultSourceOffset
+                : realRobotAxisOffset(entry.realRobotName);
+            if(entry.realRobotName.isEmpty()) {
+                defaultSourceOffset += sourceCount;
+            }
+            if(sourceCount <= 0 || sourceOffset < 0 ||
+               static_cast<int>(angles.size()) <= sourceOffset) {
                 continue;
             }
 
@@ -352,6 +532,9 @@ namespace robot_qt_viewer
                 static_cast<int>(angles.size()) - sourceOffset);
             if(primaryRobotId.isEmpty() && count > 0) {
                 primaryRobotId = entry.sceneRobotId;
+            }
+            if(count > 0) {
+                ++updatedMappingCount;
             }
             const QStringList jointTypes = m_virtualRobotJointTypes.value(entry.sceneRobotId);
             for(int i = 0; i < count; ++i) {
@@ -370,7 +553,6 @@ namespace robot_qt_viewer
                     runtimeValue);
                 updated = true;
             }
-            sourceOffset += sourceCount;
         }
 
         if(updated) {
@@ -382,6 +564,13 @@ namespace robot_qt_viewer
             }
             m_context.documentController().publishRobotRuntimeChanged(
                 continuous ? QStringLiteral("digitalTwinContinuousSync") : QStringLiteral("digitalTwinSingleSync"));
+            if(continuous && !m_twinSyncReported) {
+                const QString message = dtText("digitalTwin.mapping.syncSucceeded")
+                                            .arg(updatedMappingCount);
+                m_widget.appendMappingStatus(message);
+                emit statusMessageRequested(message, 5000);
+                m_twinSyncReported = true;
+            }
         }
     }
 }

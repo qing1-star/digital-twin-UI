@@ -21,7 +21,8 @@ namespace robot_qt_viewer
     RobotQtViewerWorkbenchTransitionResult DigitalTwinWorkbenchLifecycle::deactivate(
         const RobotQtViewerWorkbenchTransitionContext&)
     {
-        m_widget.deactivate();
+        // The live twin session outlives workbench visibility. The user controls it
+        // explicitly; project release and application shutdown still stop it below.
         return workbenchTransitionSucceeded();
     }
 
