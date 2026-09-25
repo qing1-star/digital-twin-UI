@@ -1,11 +1,14 @@
 #include "DigitalTwinWorkbenchWidget.h"
 
 #include <Communicate/RobotController.h>
-#include "../../../SMRobotApps/RobotQtViewer/RobotQtViewerLanguage.h"
+#include "RobotQtViewerLocalization.h"
 
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDialog>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGridLayout>
@@ -29,17 +32,22 @@
 DigitalTwinWorkbenchWidget::DigitalTwinWorkbenchWidget(QWidget* parent)
     : QWidget(parent)
     , m_controller(std::make_shared<RobotController>())
-    , m_language(robot_qt_viewer::LanguageManager::savedLanguage())
 {
+    if(QApplication* application = qobject_cast<QApplication*>(QApplication::instance())) {
+        m_localization =
+            robot_qt_viewer::RobotQtViewerLocalizationService::installedOnApplication(
+                *application);
+    }
     setupUi();
     setupConnections();
     retranslateUi();
     updateConnectionStatus(false);
 }
 
-void DigitalTwinWorkbenchWidget::setLanguage(robot_qt_viewer::LanguageKind language)
+void DigitalTwinWorkbenchWidget::setLocalizationService(
+    const robot_qt_viewer::RobotQtViewerLocalizationService* localization)
 {
-    m_language = language;
+    m_localization = localization;
     retranslateUi();
 }
 
@@ -65,11 +73,12 @@ void DigitalTwinWorkbenchWidget::deactivate()
         m_digitalTwinButton->setText(uiText("digitalTwin.button.digitalTwin"));
     }
     appendStatus(uiText("digitalTwin.log.closed"));
+    emit digitalTwinStateChanged(false);
 }
 
 QString DigitalTwinWorkbenchWidget::uiText(const QString& key) const
 {
-    return robot_qt_viewer::LanguageManager::text(m_language, key);
+    return m_localization != nullptr ? m_localization->text(key, key) : key;
 }
 
 void DigitalTwinWorkbenchWidget::setupUi()
@@ -186,12 +195,14 @@ void DigitalTwinWorkbenchWidget::setupUi()
     mappingLayout->addWidget(m_realRobotLabel, 1, 0);
     m_realRobotCombo = new QComboBox(m_mappingGroup);
     mappingLayout->addWidget(m_realRobotCombo, 1, 1);
+    m_loadMappingConfigButton = new QPushButton(m_mappingGroup);
+    mappingLayout->addWidget(m_loadMappingConfigButton, 2, 0, 1, 2);
     m_addMappingButton = new QPushButton(m_mappingGroup);
-    mappingLayout->addWidget(m_addMappingButton, 2, 0);
+    mappingLayout->addWidget(m_addMappingButton, 3, 0);
     m_removeMappingButton = new QPushButton(m_mappingGroup);
-    mappingLayout->addWidget(m_removeMappingButton, 2, 1);
+    mappingLayout->addWidget(m_removeMappingButton, 3, 1);
     m_confirmMappingButton = new QPushButton(m_mappingGroup);
-    mappingLayout->addWidget(m_confirmMappingButton, 3, 0, 1, 2);
+    mappingLayout->addWidget(m_confirmMappingButton, 4, 0, 1, 2);
     m_mappingGroup->setVisible(false);
     optionsLayout->addWidget(m_mappingGroup);
 
@@ -216,6 +227,7 @@ void DigitalTwinWorkbenchWidget::setupConnections()
     connect(m_digitalTwinButton, &QPushButton::clicked, this, &DigitalTwinWorkbenchWidget::onDigitalTwinClicked);
     connect(m_sendFileButton, &QPushButton::clicked, this, &DigitalTwinWorkbenchWidget::onSendFileClicked);
     connect(m_toggleStatusAreaButton, &QPushButton::clicked, this, &DigitalTwinWorkbenchWidget::onToggleStatusAreaClicked);
+    connect(m_loadMappingConfigButton, &QPushButton::clicked, this, &DigitalTwinWorkbenchWidget::onLoadMappingConfigClicked);
     connect(m_addMappingButton, &QPushButton::clicked, this, &DigitalTwinWorkbenchWidget::onAddMappingClicked);
     connect(m_removeMappingButton, &QPushButton::clicked, this, &DigitalTwinWorkbenchWidget::onRemoveMappingClicked);
     connect(m_confirmMappingButton, &QPushButton::clicked, this, &DigitalTwinWorkbenchWidget::onConfirmMappingClicked);
@@ -323,6 +335,7 @@ void DigitalTwinWorkbenchWidget::onDigitalTwinClicked()
         m_digitalTwinButton->setText(m_digitalTwinActive ? uiText("digitalTwin.button.digitalTwinOn") : uiText("digitalTwin.button.digitalTwin"));
         appendStatus(m_digitalTwinActive ? uiText("digitalTwin.log.started") : uiText("digitalTwin.log.closed"));
         m_stateLabel->setText(m_digitalTwinActive ? uiText("digitalTwin.status.running") : uiText("digitalTwin.status.stopped"));
+        emit digitalTwinStateChanged(m_digitalTwinActive);
     } else {
         m_digitalTwinActive = false;
         appendStatus(uiText("digitalTwin.message.connectFirst"));
@@ -385,6 +398,20 @@ void DigitalTwinWorkbenchWidget::onToggleStatusAreaClicked()
     m_toggleStatusAreaButton->setText(visible ? uiText("digitalTwin.button.hideAll") : uiText("digitalTwin.button.showAll"));
 }
 
+void DigitalTwinWorkbenchWidget::onLoadMappingConfigClicked()
+{
+    const QString configDirectory = QDir(QCoreApplication::applicationDirPath())
+                                        .filePath(QStringLiteral("data/digitalJSON"));
+    const QString filePath = QFileDialog::getOpenFileName(
+        this,
+        uiText("digitalTwin.dialog.selectMappingConfig"),
+        configDirectory,
+        uiText("digitalTwin.dialog.mappingConfigFilter"));
+    if(!filePath.isEmpty()) {
+        emit mappingConfigLoadRequested(filePath);
+    }
+}
+
 void DigitalTwinWorkbenchWidget::onAddMappingClicked()
 {
     if(m_sceneRobotCombo == nullptr || m_realRobotCombo == nullptr || m_sceneRobotCombo->count() == 0) {
@@ -431,6 +458,7 @@ void DigitalTwinWorkbenchWidget::updateConnectionStatus(bool connected)
             m_digitalTwinButton->setText(uiText("digitalTwin.button.digitalTwin"));
         }
     }
+    emit robotConnectionStatusChanged(connected);
 }
 
 void DigitalTwinWorkbenchWidget::updatePingResult(const QString& result)
@@ -480,6 +508,7 @@ void DigitalTwinWorkbenchWidget::retranslateUi()
     if(m_mappingGroup != nullptr) m_mappingGroup->setTitle(uiText("digitalTwin.group.mapping"));
     if(m_sceneRobotLabel != nullptr) m_sceneRobotLabel->setText(uiText("digitalTwin.label.sceneRobot"));
     if(m_realRobotLabel != nullptr) m_realRobotLabel->setText(uiText("digitalTwin.label.realRobot"));
+    if(m_loadMappingConfigButton != nullptr) m_loadMappingConfigButton->setText(uiText("digitalTwin.button.loadMappingConfig"));
     if(m_addMappingButton != nullptr) m_addMappingButton->setText(uiText("digitalTwin.button.addMapping"));
     if(m_removeMappingButton != nullptr) m_removeMappingButton->setText(uiText("digitalTwin.button.removeMapping"));
     if(m_confirmMappingButton != nullptr) m_confirmMappingButton->setText(uiText("digitalTwin.button.confirmMapping"));
