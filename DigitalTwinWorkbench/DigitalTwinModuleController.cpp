@@ -17,6 +17,7 @@
 #include <QTextStream>
 
 #include <algorithm>
+#include <chrono>
 
 namespace
 {
@@ -509,6 +510,8 @@ namespace robot_qt_viewer
 
         const QVector<MappingEntry> mappings = activeMappings();
         QString primaryRobotId;
+        QString sprayRobotId;
+        QString turntableRobotId;
         bool updated = false;
         int updatedMappingCount = 0;
         int defaultSourceOffset = 0;
@@ -535,6 +538,15 @@ namespace robot_qt_viewer
             }
             if(count > 0) {
                 ++updatedMappingCount;
+                if(entry.realRobotName.compare(
+                        QStringLiteral("ROB_1"), Qt::CaseInsensitive) == 0
+                    && count == sourceCount) {
+                    sprayRobotId = entry.sceneRobotId;
+                } else if(entry.realRobotName.compare(
+                        QStringLiteral("STN1"), Qt::CaseInsensitive) == 0
+                    && count == sourceCount) {
+                    turntableRobotId = entry.sceneRobotId;
+                }
             }
             const QStringList jointTypes = m_virtualRobotJointTypes.value(entry.sceneRobotId);
             for(int i = 0; i < count; ++i) {
@@ -562,8 +574,16 @@ namespace robot_qt_viewer
                     QString(),
                     continuous ? QStringLiteral("digitalTwinContinuousSelection") : QStringLiteral("digitalTwinSingleSelection"));
             }
-            m_context.documentController().publishRobotRuntimeChanged(
-                continuous ? QStringLiteral("digitalTwinContinuousSync") : QStringLiteral("digitalTwinSingleSync"));
+            if(continuous) {
+                const double sampleTimeSeconds =
+                    std::chrono::duration<double>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count();
+                m_context.documentController().publishLiveRobotRuntimeChanged(
+                    sprayRobotId, turntableRobotId, sampleTimeSeconds);
+            } else {
+                m_context.documentController().publishRobotRuntimeChanged(
+                    QStringLiteral("digitalTwinSingleSync"));
+            }
             if(continuous && !m_twinSyncReported) {
                 const QString message = dtText("digitalTwin.mapping.syncSucceeded")
                                             .arg(updatedMappingCount);
